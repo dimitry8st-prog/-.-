@@ -6,6 +6,7 @@ from typing import Optional
 
 from telegram import Update
 from telegram.constants import ChatAction
+from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from meeting360.audit import analyze_with_openai
@@ -21,6 +22,21 @@ from meeting360.media import (
     validate_media_size,
 )
 from meeting360.transcription import transcribe_audio
+
+
+async def _update_progress(progress_message, text: str) -> None:
+    """A failed status edit must not cancel media processing."""
+    try:
+        await progress_message.edit_text(text)
+    except TelegramError as error:
+        logging.warning("Could not update progress message: %s", error)
+
+
+async def _delete_progress(progress_message) -> None:
+    try:
+        await progress_message.delete()
+    except TelegramError as error:
+        logging.warning("Could not delete progress message: %s", error)
 
 
 async def start_handler(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
@@ -105,14 +121,19 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             source_path = Path(tmp_dir) / file_data.filename
             audio_path = Path(tmp_dir) / "speech.mp3"
 
-            await progress_message.edit_text("Скачиваю файл из Telegram...")
+            await _update_progress(progress_message, "Скачиваю файл из Telegram...")
             telegram_file = await context.bot.get_file(file_data.file_id)
             await telegram_file.download_to_drive(custom_path=str(source_path))
+            validate_media_size(source_path.stat().st_size, settings.max_file_size_mb)
 
-            await progress_message.edit_text("Извлекаю и подготавливаю звуковую дорожку...")
+            await _update_progress(
+                progress_message, "Извлекаю и подготавливаю звуковую дорожку..."
+            )
             await asyncio.to_thread(convert_to_speech_mp3, source_path, audio_path)
 
-            await progress_message.edit_text("Разделяю говорящих и создаю транскрипцию...")
+            await _update_progress(
+                progress_message, "Разделяю говорящих и создаю транскрипцию..."
+            )
             transcription = await asyncio.to_thread(
                 transcribe_audio,
                 audio_path,
@@ -123,10 +144,23 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             speaker_count = transcription.speaker_count
             duration_ms = transcription.duration_ms
 
-        await progress_message.edit_text("Транскрипция готова. Анализирую встречу...")
+        await _update_progress(
+            progress_message, "Транскрипция готова. Анализирую встречу..."
+        )
         analysis = await asyncio.to_thread(
             analyze_with_openai, transcript, audit_prompt, settings
         )
+
+        await _update_progress(progress_message, "Анализ готов. Отправляю результат...")
+        await message.reply_document(
+            document=build_transcript_document(transcript, file_data.filename),
+            caption=(
+                "Транскрипция готова. "
+                f"Распознано участников: {speaker_count or 'не определено'}."
+            ),
+        )
+        for chunk in split_for_telegram(analysis):
+            await message.reply_text(chunk)
 
         await _save_result(
             settings,
@@ -139,21 +173,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "success",
             None,
         )
-
-        await progress_message.edit_text("Анализ готов. Отправляю результат...")
-        await message.reply_document(
-            document=build_transcript_document(transcript, file_data.filename),
-            caption=(
-                "Транскрипция готова. "
-                f"Распознано участников: {speaker_count or 'не определено'}."
-            ),
-        )
-        for chunk in split_for_telegram(analysis):
-            await message.reply_text(chunk)
-        await progress_message.delete()
+        await _delete_progress(progress_message)
 
     except MediaValidationError as error:
-        await progress_message.edit_text(str(error))
+        await _update_progress(progress_message, str(error))
     except MediaConversionError as error:
         logging.warning("Media conversion failed for %s: %s", file_data.file_unique_id, error)
         await _save_result(
@@ -167,9 +190,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "failed",
             str(error),
         )
-        await progress_message.edit_text(
+        await _update_progress(
+            progress_message,
             "Не удалось извлечь речь из файла. Проверьте, что запись содержит "
-            "звуковую дорожку и не повреждена."
+            "звуковую дорожку и не повреждена.",
         )
     except Exception as error:
         logging.exception("Failed to process media file: %s", error)
@@ -184,9 +208,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "failed",
             str(error),
         )
-        await progress_message.edit_text(
+        await _update_progress(
+            progress_message,
             "Не получилось обработать файл. Попробуйте ещё раз. "
-            "Если ошибка повторится, администратору нужно проверить журнал контейнера."
+            "Если ошибка повторится, администратору нужно проверить журнал контейнера.",
         )
 
 
