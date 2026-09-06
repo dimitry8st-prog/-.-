@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 ASSEMBLYAI_UPLOAD_URL = "https://api.assemblyai.com/v2/upload"
@@ -21,18 +23,41 @@ class TranscriptionResult:
     duration_ms: Optional[int]
 
 
+def _polling_session() -> requests.Session:
+    """Retry safe GET requests used while waiting for a transcript."""
+    retry = Retry(
+        total=4,
+        connect=4,
+        read=4,
+        status=4,
+        backoff_factor=0.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        respect_retry_after_header=True,
+    )
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
+
+
 def upload_to_assemblyai(file_path: Path, api_key: str) -> str:
     headers = {"authorization": api_key}
     with file_path.open("rb") as audio_file:
-        response = requests.post(
-            ASSEMBLYAI_UPLOAD_URL,
-            headers=headers,
-            data=audio_file,
-            timeout=1200,
-        )
-    response.raise_for_status()
+        try:
+            response = requests.post(
+                ASSEMBLYAI_UPLOAD_URL,
+                headers=headers,
+                data=audio_file,
+                timeout=1200,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as error:
+            raise AssemblyAIError("Не удалось загрузить аудио в AssemblyAI.") from error
 
-    upload_url = response.json().get("upload_url")
+    if not isinstance(payload, dict):
+        raise AssemblyAIError("AssemblyAI returned an invalid upload response.")
+    upload_url = payload.get("upload_url")
     if not upload_url:
         raise AssemblyAIError("AssemblyAI did not return upload_url.")
     return upload_url
@@ -48,15 +73,21 @@ def create_assemblyai_transcript(
         "language_detection": True,
         "speaker_labels": True,
     }
-    response = requests.post(
-        ASSEMBLYAI_TRANSCRIPT_URL,
-        headers=headers,
-        json=payload,
-        timeout=60,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.post(
+            ASSEMBLYAI_TRANSCRIPT_URL,
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
+        response.raise_for_status()
+        response_payload = response.json()
+    except requests.RequestException as error:
+        raise AssemblyAIError("AssemblyAI не принял запрос на транскрибацию.") from error
 
-    transcript_id = response.json().get("id")
+    if not isinstance(response_payload, dict):
+        raise AssemblyAIError("AssemblyAI returned an invalid transcript response.")
+    transcript_id = response_payload.get("id")
     if not transcript_id:
         raise AssemblyAIError("AssemblyAI did not return transcript id.")
     return transcript_id
@@ -107,17 +138,27 @@ def poll_assemblyai_transcript(
     deadline = time.monotonic() + timeout_seconds
     endpoint = f"{ASSEMBLYAI_TRANSCRIPT_URL}/{transcript_id}"
 
-    while time.monotonic() < deadline:
-        response = requests.get(endpoint, headers=headers, timeout=60)
-        response.raise_for_status()
-        payload = response.json()
-        status = payload.get("status")
+    with _polling_session() as session:
+        while time.monotonic() < deadline:
+            try:
+                response = session.get(endpoint, headers=headers, timeout=60)
+                response.raise_for_status()
+                payload = response.json()
+            except requests.RequestException as error:
+                raise AssemblyAIError(
+                    "Потеряно соединение с AssemblyAI во время транскрибации."
+                ) from error
+            if not isinstance(payload, dict):
+                raise AssemblyAIError("AssemblyAI returned an invalid status response.")
+            status = payload.get("status")
 
-        if status == "completed":
-            return format_diarized_transcript(payload)
-        if status == "error":
-            raise AssemblyAIError(payload.get("error") or "Unknown AssemblyAI error.")
-        time.sleep(3)
+            if status == "completed":
+                return format_diarized_transcript(payload)
+            if status == "error":
+                raise AssemblyAIError(payload.get("error") or "Unknown AssemblyAI error.")
+            if status not in {"queued", "processing"}:
+                raise AssemblyAIError(f"AssemblyAI returned unexpected status: {status!r}.")
+            time.sleep(3)
 
     raise TimeoutError("Timed out while waiting for AssemblyAI transcription.")
 
