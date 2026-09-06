@@ -1,11 +1,18 @@
 import math
+import os
 import shutil
 import struct
 import tempfile
 import unittest
 import wave
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
+from telegram.error import TelegramError
+
+from meeting360.audit import analyze_with_openai
+from meeting360.config import Settings
 from meeting360.media import (
     MediaConversionError,
     MediaValidationError,
@@ -15,9 +22,85 @@ from meeting360.media import (
 )
 from meeting360.transcription import (
     AssemblyAIError,
+    create_assemblyai_transcript,
     format_diarized_transcript,
     format_timestamp,
 )
+from meeting360.telegram_app import _update_progress
+
+
+class SettingsTests(unittest.TestCase):
+    @patch.dict(
+        os.environ,
+        {
+            "TELEGRAM_BOT_TOKEN": "telegram-test",
+            "ASSEMBLYAI_API_KEY": "assembly-test",
+            "OPENAI_API_KEY": "openai-test",
+            "DATABASE_URL": "postgresql://user:pass@localhost/db",
+        },
+        clear=True,
+    )
+    def test_uses_current_assemblyai_models_by_default(self):
+        settings = Settings.from_env()
+        self.assertEqual(
+            settings.assemblyai_speech_models,
+            ("universal-3-5-pro", "universal-2"),
+        )
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_reports_missing_required_settings(self):
+        with self.assertRaisesRegex(ValueError, "TELEGRAM_BOT_TOKEN"):
+            Settings.from_env()
+
+
+class AssemblyAIRequestTests(unittest.TestCase):
+    @patch("meeting360.transcription.requests.post")
+    def test_submits_diarization_and_current_models(self, post: Mock):
+        response = post.return_value
+        response.json.return_value = {"id": "transcript-id"}
+
+        result = create_assemblyai_transcript(
+            "https://example.test/audio.mp3",
+            "test-key",
+            ("universal-3-5-pro", "universal-2"),
+        )
+
+        self.assertEqual(result, "transcript-id")
+        payload = post.call_args.kwargs["json"]
+        self.assertTrue(payload["speaker_labels"])
+        self.assertTrue(payload["language_detection"])
+        self.assertEqual(
+            payload["speech_models"], ["universal-3-5-pro", "universal-2"]
+        )
+
+
+class OpenAITests(unittest.TestCase):
+    @patch("meeting360.audit.OpenAI")
+    def test_rejects_empty_message_content(self, openai: Mock):
+        client = openai.return_value
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=None))]
+        )
+        settings = Settings(
+            telegram_bot_token="telegram-test",
+            assemblyai_api_key="assembly-test",
+            openai_api_key="openai-test",
+            database_url="postgresql://user:pass@localhost/db",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "empty analysis"):
+            analyze_with_openai("тест", "инструкция", settings)
+
+
+class TelegramProgressTests(unittest.IsolatedAsyncioTestCase):
+    async def test_progress_edit_failure_does_not_cancel_processing(self):
+        progress_message = SimpleNamespace(
+            edit_text=AsyncMock(side_effect=TelegramError("temporary failure"))
+        )
+
+        await _update_progress(progress_message, "Обрабатываю...")
+
+        progress_message.edit_text.assert_awaited_once_with("Обрабатываю...")
 
 
 class TimestampTests(unittest.TestCase):
