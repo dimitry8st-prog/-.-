@@ -29,7 +29,7 @@ services:
       ASSEMBLYAI_API_KEY: ${ASSEMBLYAI_API_KEY:?Set ASSEMBLYAI_API_KEY in .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
-      ASSEMBLYAI_SPEECH_MODELS: ${ASSEMBLYAI_SPEECH_MODELS:-universal-3-pro,universal-2}
+      ASSEMBLYAI_SPEECH_MODELS: ${ASSEMBLYAI_SPEECH_MODELS:-universal-3-5-pro,universal-2}
       MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-20}
       DATABASE_URL: postgresql://${POSTGRES_USER:-meeting360}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-meeting360}
     healthcheck:
