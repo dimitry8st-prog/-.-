@@ -10,6 +10,7 @@ from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from meeting360.audit import analyze_with_openai
+from meeting360.format_telegram import format_audit_for_telegram
 from meeting360.config import Settings
 from meeting360.database import save_audit_result
 from meeting360.media import (
@@ -147,8 +148,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await _update_progress(
             progress_message, "Транскрипция готова. Анализирую встречу..."
         )
-        analysis = await asyncio.to_thread(
-            analyze_with_openai, transcript, audit_prompt, settings
+        analysis = format_audit_for_telegram(
+            await asyncio.to_thread(
+                analyze_with_openai, transcript, audit_prompt, settings
+            )
         )
 
         await _update_progress(progress_message, "Анализ готов. Отправляю результат...")

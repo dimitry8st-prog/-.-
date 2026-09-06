@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from telegram.error import TelegramError
 
 from meeting360.audit import analyze_with_openai
+from meeting360.format_telegram import format_audit_for_telegram
 from meeting360.config import Settings
 from meeting360.media import (
     MediaConversionError,
@@ -101,6 +102,41 @@ class TelegramProgressTests(unittest.IsolatedAsyncioTestCase):
         await _update_progress(progress_message, "Обрабатываю...")
 
         progress_message.edit_text.assert_awaited_once_with("Обрабатываю...")
+
+
+class TelegramAuditFormatTests(unittest.TestCase):
+    def test_converts_markdown_table_to_readable_list(self):
+        raw = """
+# Аудит встречи
+**Итог:** 3/22 (14%)
+**Спикеры:** Спикер A
+
+## Оценка по критериям
+| № | Критерий | Статус | Балл | Доказательство |
+|---|----------|--------|------|----------------|
+| 1 | Цель встречи | Частично | 1 | «ДИС помогает организовать обучение...» [00:01] |
+| 2 | Повестка | Не зафиксировано | 0 | — |
+"""
+        formatted = format_audit_for_telegram(raw)
+
+        self.assertIn("Аудит встречи", formatted)
+        self.assertIn("Итог: 3/22 (14%)", formatted)
+        self.assertNotIn("**", formatted)
+        self.assertNotIn("|---|", formatted)
+        self.assertIn("1. Цель встречи — Частично (1)", formatted)
+        self.assertIn("«ДИС помогает организовать обучение...» [00:01]", formatted)
+        self.assertIn("2. Повестка — Не зафиксировано (0)", formatted)
+
+    def test_converts_tasks_table(self):
+        raw = """
+## Задачи
+| Действие | Ответственный | Срок | Основание |
+|---|---|---|---|
+| Подготовить материалы | Спикер A | пятница | «Соберём файлы» [01:20] |
+"""
+        formatted = format_audit_for_telegram(raw)
+        self.assertIn("• Подготовить материалы (ответственный: Спикер A, срок: пятница)", formatted)
+        self.assertIn("Основание: «Соберём файлы» [01:20]", formatted)
 
 
 class TimestampTests(unittest.TestCase):
