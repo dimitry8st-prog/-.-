@@ -12,7 +12,7 @@ class Settings:
     openai_api_key: str
     database_url: str
     openai_model: str = "gpt-4.1-mini"
-    assemblyai_speech_models: tuple[str, ...] = ("universal-3-pro", "universal-2")
+    assemblyai_speech_models: tuple[str, ...] = ("universal-3-5-pro", "universal-2")
     max_file_size_mb: int = DEFAULT_MAX_FILE_SIZE_MB
 
     @classmethod
@@ -24,7 +24,7 @@ class Settings:
         openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
 
         speech_models_raw = os.getenv(
-            "ASSEMBLYAI_SPEECH_MODELS", "universal-3-pro,universal-2"
+            "ASSEMBLYAI_SPEECH_MODELS", "universal-3-5-pro,universal-2"
         )
         assemblyai_speech_models = tuple(
             item.strip() for item in speech_models_raw.split(",") if item.strip()
