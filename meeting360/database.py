@@ -10,7 +10,7 @@ DB_CONNECTION_RETRY_DELAY_SECONDS = 2
 
 
 def init_database(database_url: str) -> None:
-    with psycopg2.connect(database_url) as connection:
+    with psycopg2.connect(database_url, connect_timeout=10) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -89,7 +89,7 @@ def save_audit_result(
     status: str,
     error_message: Optional[str],
 ) -> None:
-    with psycopg2.connect(database_url) as connection:
+    with psycopg2.connect(database_url, connect_timeout=10) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
