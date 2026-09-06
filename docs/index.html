@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Встреча 360 — промо</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #fdfae7;
+        --ink: #111111;
+        --muted: #6b6b6b;
+        --accent: #1e2bfa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Segoe UI", Inter, sans-serif;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px 48px;
+      }
+      main {
+        width: min(960px, 100%);
+      }
+      .eyebrow {
+        color: var(--accent);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0 0 10px;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(32px, 5vw, 52px);
+        line-height: 1.1;
+      }
+      p {
+        margin: 0 0 24px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.5;
+        max-width: 42ch;
+      }
+      video {
+        width: 100%;
+        border-radius: 14px;
+        border: 1.5px solid rgba(30, 43, 250, 0.2);
+        background: #111;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Промо-ролик</p>
+      <h1>Встреча 360</h1>
+      <p>Отправьте запись встречи в Telegram — получите понятный рабочий отчёт.</p>
+      <video controls playsinline src="vstrecha-360.mp4">
+        Ваш браузер не воспроизводит видео.
+        <a href="vstrecha-360.mp4">Скачать ролик</a>
+      </video>
+    </main>
+  </body>
+</html>
