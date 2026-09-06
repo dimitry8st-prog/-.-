@@ -41,8 +41,11 @@ def analyze_with_openai(transcript: str, audit_prompt: str, settings: Settings) 
         ],
     )
 
+    if not response.choices:
+        raise RuntimeError("OpenAI returned no response choices.")
+
     content = response.choices[0].message.content
-    result = content.strip() if isinstance(content, str) else str(content).strip()
+    result = content.strip() if isinstance(content, str) else ""
     if not result:
         raise RuntimeError("OpenAI returned empty analysis.")
     return result
