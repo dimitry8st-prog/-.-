@@ -48,7 +48,7 @@ Telegram — только интерфейс. В дальнейшем вмест
 
 Короткий ролик о сервисе — с женской озвучкой, без музыки:
 
-- [смотреть на сайте](https://dimitry8st-prog.github.io/-.-/)
+- [смотреть на сайте](https://dimitry8st-prog.github.io/meeting-360/)
 - [скачать MP4](docs/vstrecha-360.mp4)
 
 ## Быстрый запуск через Docker
@@ -155,7 +155,6 @@ DATABASE_URL=postgresql://meeting360:password@localhost:5432/meeting360
 | `meeting360/database.py` | схема PostgreSQL и сохранение результатов |
 | `meeting360/telegram_app.py` | команды и сценарий взаимодействия в Telegram |
 | `prompt-audit.md` | рабочий промпт аудита и 11 критериев встречи |
-| `prompt.md` | совместимая учебная копия для выполнения обязательного задания |
 | `docker-compose.yml` | бот, PostgreSQL, healthcheck и volume |
 | `Dockerfile` | образ приложения |
 | `.env.example` | безопасный шаблон настроек |
